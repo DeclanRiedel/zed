@@ -3192,8 +3192,8 @@ impl EditorElement {
             return Vec::new();
         }
 
-        // Show the placeholder when the editor is empty
-        if snapshot.is_empty() {
+        // Empty buffers can still have visible text supplied by inlays.
+        if snapshot.is_empty() && snapshot.inlay_snapshot().len().0 == MultiBufferOffset(0) {
             let font_size = style.text.font_size.to_pixels(window.rem_size());
             let placeholder_color = cx.theme().colors().text_placeholder;
             let placeholder_text = snapshot.placeholder_text();

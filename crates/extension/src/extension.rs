@@ -4,6 +4,7 @@ mod extension_events;
 mod extension_host_proxy;
 mod extension_manifest;
 mod extension_resources;
+pub mod ghost_text;
 mod types;
 
 use std::path::{Path, PathBuf};

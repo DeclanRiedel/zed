@@ -336,13 +336,15 @@ impl<'a> Iterator for InlayChunks<'a> {
 
                 let mut renderer = None;
                 let mut highlight_style = match inlay.id {
-                    InlayId::EditPrediction(_) => self.highlight_styles.edit_prediction.map(|s| {
-                        if inlay.text().chars().all(|c| c.is_whitespace()) {
-                            s.whitespace
-                        } else {
-                            s.insertion
-                        }
-                    }),
+                    InlayId::EditPrediction(_) | InlayId::ExtensionGhostText(_) => {
+                        self.highlight_styles.edit_prediction.map(|s| {
+                            if inlay.text().chars().all(|c| c.is_whitespace()) {
+                                s.whitespace
+                            } else {
+                                s.insertion
+                            }
+                        })
+                    }
                     InlayId::Hint(_) => self.highlight_styles.inlay_hint,
                     InlayId::DebuggerValue(_) => self.highlight_styles.inlay_hint,
                     InlayId::ReplResult(_) => {
