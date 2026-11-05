@@ -1,4 +1,5 @@
 mod extension_lsp_adapter;
+pub use extension_lsp_adapter::WorktreeDelegateAdapter;
 
 use std::path::PathBuf;
 use std::sync::Arc;

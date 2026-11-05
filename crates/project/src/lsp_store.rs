@@ -4842,6 +4842,18 @@ fn lsp_pull_cancelled_with_retrigger(error: &anyhow::Error) -> bool {
 }
 
 impl LspStore {
+    /// Creates the same worktree delegate used by extension language servers.
+    pub fn worktree_adapter_delegate(
+        &self,
+        worktree: &Entity<Worktree>,
+        cx: &mut App,
+    ) -> Result<Arc<dyn LspAdapterDelegate>> {
+        let local = self
+            .as_local()
+            .context("extension commands currently require a local project")?;
+        Ok(LocalLspAdapterDelegate::from_local_lsp(local, worktree, cx))
+    }
+
     pub fn init(client: &AnyProtoClient) {
         client.add_entity_request_handler(Self::handle_lsp_query);
         client.add_entity_message_handler(Self::handle_lsp_query_response);

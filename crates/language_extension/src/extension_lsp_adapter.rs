@@ -23,7 +23,7 @@ use util::{ResultExt, maybe, rel_path::RelPath};
 use crate::{LanguageServerRegistryProxy, LspAccess};
 
 /// An adapter that allows an [`LspAdapterDelegate`] to be used as a [`WorktreeDelegate`].
-struct WorktreeDelegateAdapter(pub Arc<dyn LspAdapterDelegate>);
+pub struct WorktreeDelegateAdapter(pub Arc<dyn LspAdapterDelegate>);
 
 #[async_trait]
 impl WorktreeDelegate for WorktreeDelegateAdapter {
