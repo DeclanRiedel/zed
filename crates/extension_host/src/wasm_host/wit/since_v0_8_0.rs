@@ -44,6 +44,7 @@ wasmtime::component::bindgen!({
     },
     path: "../extension_api/wit/since_v0.8.0",
     with: {
+         "ghost-text-session": ExtensionGhostTextSession,
          "worktree": ExtensionWorktree,
          "project": ExtensionProject,
          "key-value-store": ExtensionKeyValueStore,
@@ -57,6 +58,8 @@ mod settings {
     #![allow(dead_code)]
     include!(concat!(env!("OUT_DIR"), "/since_v0.8.0/settings.rs"));
 }
+
+pub type ExtensionGhostTextSession = Arc<dyn extension::ghost_text::GhostTextSession>;
 
 pub type ExtensionWorktree = Arc<dyn WorktreeDelegate>;
 pub type ExtensionProject = Arc<dyn ProjectDelegate>;
@@ -576,6 +579,75 @@ impl HostProject for WasmState {
     }
 }
 
+impl HostGhostTextSession for WasmState {
+    async fn set(
+        &mut self,
+        session: Resource<ExtensionGhostTextSession>,
+        offset: u32,
+        text: String,
+    ) -> wasmtime::Result<Result<(), String>> {
+        let session = self.table.get(&session)?.clone();
+        Ok(self
+            .on_main_thread(move |cx| {
+                async move {
+                    cx.update(|cx| session.set(offset as usize, text, cx))
+                        .map_err(|error| error.to_string())
+                }
+                .boxed_local()
+            })
+            .await)
+    }
+
+    async fn text(
+        &mut self,
+        session: Resource<ExtensionGhostTextSession>,
+    ) -> wasmtime::Result<Result<String, String>> {
+        let session = self.table.get(&session)?.clone();
+        Ok(self
+            .on_main_thread(move |cx| {
+                async move {
+                    cx.update(|cx| session.text(cx))
+                        .map_err(|error| error.to_string())
+                }
+                .boxed_local()
+            })
+            .await)
+    }
+
+    async fn clear(
+        &mut self,
+        session: Resource<ExtensionGhostTextSession>,
+    ) -> wasmtime::Result<Result<(), String>> {
+        let session = self.table.get(&session)?.clone();
+        Ok(self
+            .on_main_thread(move |cx| {
+                async move {
+                    cx.update(|cx| session.clear(cx))
+                        .map_err(|error| error.to_string())
+                }
+                .boxed_local()
+            })
+            .await)
+    }
+
+    async fn drop(&mut self, session: Resource<ExtensionGhostTextSession>) -> wasmtime::Result<()> {
+        let session = self.table.delete(session)?;
+        self.on_main_thread(move |cx| {
+            async move {
+                cx.update(|cx| {
+                    // Closing a scratch tab before dropping its resource is normal.
+                    if let Err(error) = session.clear(cx) {
+                        log::debug!("clearing closed ghost text session: {error}");
+                    }
+                });
+            }
+            .boxed_local()
+        })
+        .await;
+        Ok(())
+    }
+}
+
 impl HostWorktree for WasmState {
     async fn id(&mut self, delegate: Resource<Arc<dyn WorktreeDelegate>>) -> wasmtime::Result<u64> {
         let delegate = self.table.get(&delegate)?;
@@ -949,6 +1021,26 @@ impl dap::Host for WasmState {
 }
 
 impl ExtensionImports for WasmState {
+    async fn open_ghost_text(
+        &mut self,
+        title: String,
+        text: String,
+    ) -> wasmtime::Result<Result<Resource<ExtensionGhostTextSession>, String>> {
+        let session = self
+            .on_main_thread(move |cx| {
+                async move {
+                    cx.update(|cx| extension::ghost_text::open(title, text, cx))
+                        .map_err(|error| error.to_string())
+                }
+                .boxed_local()
+            })
+            .await;
+        match session {
+            Ok(session) => Ok(Ok(self.table.push(session)?)),
+            Err(error) => Ok(Err(error)),
+        }
+    }
+
     async fn get_settings(
         &mut self,
         location: Option<self::SettingsLocation>,

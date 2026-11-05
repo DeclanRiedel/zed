@@ -25,6 +25,7 @@ mod document_symbols;
 mod editor_settings;
 mod element;
 mod emmet_ext;
+mod extension_ghost_text;
 mod fold;
 mod folding_ranges;
 mod git;
@@ -362,6 +363,7 @@ impl Navigated {
 }
 
 pub fn init(cx: &mut App) {
+    extension_ghost_text::init(cx);
     cx.set_global(GlobalBlameRenderer(Arc::new(())));
     cx.set_global(breadcrumbs::RenderBreadcrumbText(render_breadcrumb_text));
 

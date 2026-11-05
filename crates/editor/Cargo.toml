@@ -12,6 +12,11 @@ workspace = true
 path = "src/editor.rs"
 doctest = false
 
+[[test]]
+name = "extension_api"
+path = "tests/extension_api.rs"
+required-features = ["test-support"]
+
 [features]
 test-support = [
     "text/test-support",
@@ -47,6 +52,7 @@ dap.workspace = true
 db.workspace = true
 buffer_diff.workspace = true
 emojis.workspace = true
+extension.workspace = true
 feature_flags.workspace = true
 file_icons.workspace = true
 futures.workspace = true
