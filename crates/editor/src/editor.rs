@@ -1095,6 +1095,7 @@ pub struct Editor {
     /// When true, navigating to a match positions the cursor at the match
     /// without selecting the matched text.
     collapse_matches: bool,
+    guided_typing: Option<extension_ghost_text::GuidedSession>,
     autoindent_mode: Option<AutoindentMode>,
     workspace: Option<(WeakEntity<Workspace>, Option<WorkspaceId>)>,
     input_enabled: bool,
@@ -2482,6 +2483,7 @@ impl Editor {
                 .unwrap_or_default(),
             cursor_offset_on_selection: false,
             current_line_highlight: None,
+            guided_typing: None,
             autoindent_mode: Some(AutoindentMode::EachLine),
             collapse_matches: false,
             workspace: None,
@@ -10150,6 +10152,7 @@ impl Editor {
                     self.detect_buffer_language(buffer_id, cx);
                 }
 
+                self.refresh_guided_typing(cx);
                 self.inlay_hint_visibility_changed(cx);
                 cx.emit(EditorEvent::BufferEdited);
                 cx.emit(SearchEvent::MatchesInvalidated);

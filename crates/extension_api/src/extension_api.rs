@@ -16,8 +16,9 @@ pub use serde_json;
 // that we may want to shadow to provide a cleaner Rust API.
 pub use wit::{
     CodeLabel, CodeLabelSpan, CodeLabelSpanLiteral, Command, DownloadedFileType, EnvVars,
-    GhostTextSession, GitDiffKind, GitFileDiff, KeyValueStore, LanguageServerInstallationStatus,
-    Project, Range, Worktree, download_file, make_file_executable, open_ghost_text,
+    GhostTextSession, GitDiffKind, GitFileDiff, GuidedTypingProgress, KeyValueStore,
+    LanguageServerInstallationStatus, Project, Range, Worktree, download_file,
+    make_file_executable, open_ghost_text,
     zed::extension::context_server::ContextServerConfiguration,
     zed::extension::dap::{
         AttachRequest, BuildTaskDefinition, BuildTaskDefinitionTemplatePayload, BuildTaskTemplate,

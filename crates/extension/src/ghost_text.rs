@@ -5,6 +5,12 @@ use gpui::{App, Global};
 
 /// A scratch editor owned by an extension. Offsets are UTF-8 byte offsets.
 pub trait GhostTextSession: Send + Sync {
+    fn start_guided_typing(
+        &self,
+        target: String,
+        cx: &mut App,
+    ) -> Result<crate::guided_typing::Progress>;
+    fn progress(&self, cx: &App) -> Result<crate::guided_typing::Progress>;
     fn set(&self, offset: usize, text: String, cx: &mut App) -> Result<()>;
     fn text(&self, cx: &App) -> Result<String>;
     fn clear(&self, cx: &mut App) -> Result<()>;

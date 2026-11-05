@@ -6,6 +6,7 @@ mod extension_manifest;
 mod extension_resources;
 pub mod ghost_text;
 pub mod git_diff;
+pub mod guided_typing;
 mod types;
 
 use std::path::{Path, PathBuf};

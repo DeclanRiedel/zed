@@ -71,7 +71,19 @@ world extension {
     /// Opens an extension-owned scratch editor. Never edits a project file.
     import open-ghost-text: func(title: string, text: string) -> result<ghost-text-session, string>;
 
+    record guided-typing-progress {
+        completed-changes: u32,
+        total-changes: u32,
+        complete: bool,
+        invalid-context: bool,
+        remove-characters: u32,
+    }
+
     resource ghost-text-session {
+        /// Guides edits from current scratch text to target, one changed region
+        /// at a time. Reports progress; never changes the real buffer itself.
+        start-guided-typing: func(target: string) -> result<guided-typing-progress, string>;
+        progress: func() -> result<guided-typing-progress, string>;
         /// Replaces this session's ghost text. Offset is a UTF-8 byte offset.
         /// Ghost text is display-only and cannot be accepted with Tab.
         set: func(offset: u32, text: string) -> result<_, string>;

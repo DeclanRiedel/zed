@@ -174,6 +174,7 @@ pub enum HighlightKey {
     DocumentHighlightWrite,
     EditPredictionHighlight,
     Editor,
+    GuidedTypingError,
     HighlightOnYank,
     HighlightsTreeView(usize),
     HoverState,
