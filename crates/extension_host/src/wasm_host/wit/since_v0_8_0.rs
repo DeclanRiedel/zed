@@ -581,6 +581,41 @@ impl HostProject for WasmState {
 }
 
 impl HostGhostTextSession for WasmState {
+    async fn start_guided_typing(
+        &mut self,
+        session: Resource<ExtensionGhostTextSession>,
+        target: String,
+    ) -> wasmtime::Result<Result<GuidedTypingProgress, String>> {
+        let session = self.table.get(&session)?.clone();
+        Ok(self
+            .on_main_thread(move |cx| {
+                async move {
+                    cx.update(|cx| session.start_guided_typing(target, cx))
+                        .map(Into::into)
+                        .map_err(|error| error.to_string())
+                }
+                .boxed_local()
+            })
+            .await)
+    }
+
+    async fn progress(
+        &mut self,
+        session: Resource<ExtensionGhostTextSession>,
+    ) -> wasmtime::Result<Result<GuidedTypingProgress, String>> {
+        let session = self.table.get(&session)?.clone();
+        Ok(self
+            .on_main_thread(move |cx| {
+                async move {
+                    cx.update(|cx| session.progress(cx))
+                        .map(Into::into)
+                        .map_err(|error| error.to_string())
+                }
+                .boxed_local()
+            })
+            .await)
+    }
+
     async fn set(
         &mut self,
         session: Resource<ExtensionGhostTextSession>,
@@ -1279,5 +1314,17 @@ impl ExtensionImports for WasmState {
             .await
             .with_context(|| format!("setting permissions for path {path:?}"))
             .to_wasmtime_result()
+    }
+}
+
+impl From<extension::guided_typing::Progress> for GuidedTypingProgress {
+    fn from(progress: extension::guided_typing::Progress) -> Self {
+        Self {
+            completed_changes: progress.completed_changes,
+            total_changes: progress.total_changes,
+            complete: progress.complete,
+            invalid_context: progress.invalid_context,
+            remove_characters: progress.remove_characters,
+        }
     }
 }

@@ -293,6 +293,19 @@ impl EditorTestContext {
         self.pixel_position_for(display_point)
     }
 
+    pub fn rendered_line_widths(&self) -> Vec<Pixels> {
+        self.editor.read_with(&self.cx, |editor, _| {
+            editor
+                .last_position_map
+                .as_ref()
+                .expect("editor must be drawn before inspecting rendered lines")
+                .line_layouts
+                .iter()
+                .map(|line| line.width)
+                .collect()
+        })
+    }
+
     pub fn pixel_position_for(&mut self, display_point: DisplayPoint) -> Point<Pixels> {
         self.update_editor(|editor, window, cx| {
             let newest_point = editor

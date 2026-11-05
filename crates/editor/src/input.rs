@@ -545,6 +545,12 @@ impl Editor {
             return;
         }
 
+        if self.guided_typing.is_some() {
+            // The prompt includes indentation, which the user must type too.
+            self.handle_input("\n", window, cx);
+            return;
+        }
+
         self.transact(window, cx, |this, window, cx| {
             let (edits_with_flags, selection_info): (Vec<_>, Vec<_>) = {
                 let selections = this
