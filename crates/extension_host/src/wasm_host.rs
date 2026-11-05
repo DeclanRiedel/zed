@@ -61,18 +61,14 @@ pub struct WasmHost {
 
 #[derive(Clone, Debug)]
 pub struct WasmExtension {
+    // Each clone owns a sender. Let the last sender's drop close the mailbox;
+    // explicitly closing it here would also disconnect the remaining clones.
     tx: UnboundedSender<ExtensionCall>,
     pub manifest: Arc<ExtensionManifest>,
     pub work_dir: Arc<Path>,
     #[allow(unused)]
     pub zed_api_version: Version,
     _task: Arc<Task<Result<(), gpui_tokio::JoinError>>>,
-}
-
-impl Drop for WasmExtension {
-    fn drop(&mut self) {
-        self.tx.close_channel();
-    }
 }
 
 #[async_trait]
@@ -1052,6 +1048,54 @@ mod tests {
             extension::init(cx);
             gpui_tokio::init(cx);
         });
+    }
+
+    #[test]
+    fn dropping_cloned_handles_keeps_extension_mailbox_open() {
+        let (tx, mut receiver) = mpsc::unbounded::<ExtensionCall>();
+        let extension = WasmExtension {
+            tx,
+            manifest: Arc::new(
+                serde_json::from_value(json!({
+                    "id": "mailbox-test",
+                    "name": "Mailbox test",
+                    "version": "0.0.0",
+                    "schema_version": 1,
+                }))
+                .unwrap(),
+            ),
+            work_dir: Arc::from(Path::new("")),
+            zed_api_version: Version::new(0, 8, 0),
+            _task: Arc::new(Task::ready(Ok(()))),
+        };
+
+        for _ in 0..3 {
+            drop(extension.clone());
+            assert!(
+                !extension.tx.is_closed(),
+                "dropping a clone closed the mailbox"
+            );
+            assert!(
+                extension
+                    .tx
+                    .unbounded_send(Box::new(|_, _| async {}.boxed()))
+                    .is_ok()
+            );
+            assert!(receiver.try_recv().is_ok());
+        }
+
+        let remaining = extension.clone();
+        drop(extension);
+        assert!(!remaining.tx.is_closed());
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        drop(remaining);
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Closed)
+        ));
     }
 
     #[gpui::test]
