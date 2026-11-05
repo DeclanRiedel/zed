@@ -1,5 +1,8 @@
 use editor::{Editor, test::editor_lsp_test_context::EditorLspTestContext};
-use extension::ghost_text;
+use extension::{
+    ghost_text,
+    git_diff::{self, GitDiffKind},
+};
 use gpui::TestAppContext;
 use language::{Language, LanguageConfig, LanguageMatcher};
 
@@ -59,4 +62,52 @@ async fn ghost_text_is_display_only_and_resource_release_clears_it(cx: &mut Test
             "é"
         )
     });
+}
+
+#[gpui::test]
+async fn staged_and_unstaged_snapshots_are_separate_and_read_only(cx: &mut TestAppContext) {
+    let mut cx = context(cx).await;
+    cx.set_head_text("committed\n");
+    cx.set_index_text("staged\n");
+    cx.set_state("unsaved working textˇ\n");
+    let (worktree, path) = cx.update_buffer(|buffer, cx| {
+        let file = buffer.file().unwrap();
+        (
+            file.worktree_id(cx).to_proto(),
+            file.path().as_unix_str().to_owned(),
+        )
+    });
+    let staged = cx
+        .update(|_, cx| git_diff::read(worktree, path.clone(), GitDiffKind::Staged, cx))
+        .await
+        .unwrap();
+    assert_eq!(staged.before_text, "committed\n");
+    assert_eq!(staged.after_text, "staged\n");
+    let unstaged = cx
+        .update(|_, cx| git_diff::read(worktree, path.clone(), GitDiffKind::Unstaged, cx))
+        .await
+        .unwrap();
+    assert_eq!(unstaged.before_text, "staged\n");
+    assert_eq!(unstaged.after_text, "unsaved working text\n");
+    println!(
+        "staged: {:?} -> {:?}; unstaged: {:?} -> {:?}",
+        staged.before_text, staged.after_text, unstaged.before_text, unstaged.after_text
+    );
+    cx.assert_index_text(Some("staged\n"));
+    cx.assert_editor_state("unsaved working textˇ\n");
+    assert!(
+        cx.update(|_, cx| git_diff::read(worktree, "../outside".into(), GitDiffKind::Staged, cx))
+            .await
+            .is_err()
+    );
+    assert!(
+        cx.update(|_, cx| git_diff::read(worktree, "/absolute".into(), GitDiffKind::Staged, cx))
+            .await
+            .is_err()
+    );
+    assert!(
+        cx.update(|_, cx| git_diff::read(u64::MAX, path, GitDiffKind::Staged, cx))
+            .await
+            .is_err()
+    );
 }

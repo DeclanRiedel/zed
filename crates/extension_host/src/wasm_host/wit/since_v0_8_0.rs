@@ -650,6 +650,34 @@ impl HostGhostTextSession for WasmState {
 }
 
 impl HostWorktree for WasmState {
+    async fn read_git_diff(
+        &mut self,
+        worktree: Resource<ExtensionWorktree>,
+        path: String,
+        kind: GitDiffKind,
+    ) -> wasmtime::Result<Result<GitFileDiff, String>> {
+        let worktree_id = self.table.get(&worktree)?.id();
+        let kind = match kind {
+            GitDiffKind::Staged => extension::git_diff::GitDiffKind::Staged,
+            GitDiffKind::Unstaged => extension::git_diff::GitDiffKind::Unstaged,
+        };
+        Ok(self
+            .on_main_thread(move |cx| {
+                async move {
+                    let diff = cx
+                        .update(|cx| extension::git_diff::read(worktree_id, path, kind, cx))
+                        .await;
+                    diff.map(|diff| GitFileDiff {
+                        before_text: diff.before_text,
+                        after_text: diff.after_text,
+                    })
+                    .map_err(|error| error.to_string())
+                }
+                .boxed_local()
+            })
+            .await)
+    }
+
     async fn id(&mut self, delegate: Resource<Arc<dyn WorktreeDelegate>>) -> wasmtime::Result<u64> {
         let delegate = self.table.get(&delegate)?;
         Ok(delegate.id())
