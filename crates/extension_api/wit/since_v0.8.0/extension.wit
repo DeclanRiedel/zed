@@ -80,6 +80,12 @@ world extension {
         clear: func() -> result<_, string>;
     }
 
+    enum git-diff-kind { staged, unstaged }
+    record git-file-diff {
+        before-text: string,
+        after-text: string,
+    }
+
     /// A Zed worktree.
     resource worktree {
         /// Returns the ID of the worktree.
@@ -88,6 +94,10 @@ world extension {
         root-path: func() -> string;
         /// Returns the textual contents of the specified file in the worktree.
         read-text-file: func(path: string) -> result<string, string>;
+        /// Reads immutable snapshots for one worktree-relative file.
+        /// Staged: HEAD -> index. Unstaged: index -> current editor buffer,
+        /// including unsaved edits. Missing sides are empty text.
+        read-git-diff: func(path: string, kind: git-diff-kind) -> result<git-file-diff, string>;
         /// Returns the path to the given binary name, if one is present on the `$PATH`.
         which: func(binary-name: string) -> option<string>;
         /// Returns the current shell environment.

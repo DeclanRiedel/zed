@@ -5,6 +5,7 @@ mod extension_host_proxy;
 mod extension_manifest;
 mod extension_resources;
 pub mod ghost_text;
+pub mod git_diff;
 mod types;
 
 use std::path::{Path, PathBuf};
