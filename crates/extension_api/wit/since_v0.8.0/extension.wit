@@ -80,8 +80,10 @@ world extension {
     }
 
     resource ghost-text-session {
-        /// Guides edits from current scratch text to target, one changed region
-        /// at a time. Reports progress; never changes the real buffer itself.
+        /// Clears replacement rows in the scratch text for retyping, then guides
+        /// changes to target one region at a time. Never edits project files.
+        /// Undo and redo reopen completed regions. Changes to unchanged context
+        /// pause guidance until that context is restored.
         start-guided-typing: func(target: string) -> result<guided-typing-progress, string>;
         progress: func() -> result<guided-typing-progress, string>;
         /// Replaces this session's ghost text. Offset is a UTF-8 byte offset.

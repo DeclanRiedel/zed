@@ -420,6 +420,106 @@ async fn deletion_only_rows_are_removed_with_delete_from_row_start(cx: &mut Test
 }
 
 #[gpui::test]
+async fn backspace_after_completion_restores_ghost_text(cx: &mut TestAppContext) {
+    let mut cx = context(cx).await;
+    let session = cx
+        .cx
+        .cx
+        .cx
+        .update(|cx| ghost_text::open("Recovery proof".into(), "old\n".into(), cx))
+        .unwrap();
+    let scratch = cx.workspace.read_with(&cx.cx.cx, |workspace, cx| {
+        workspace.active_item_as::<Editor>(cx).unwrap()
+    });
+    cx.update(|window, cx| {
+        session.start_guided_typing("hello\n".into(), cx).unwrap();
+        scratch.update(cx, |editor, cx| editor.handle_input("hello\n", window, cx));
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| {
+        assert!(session.progress(cx).unwrap().complete);
+        scratch.update(cx, |editor, cx| {
+            editor.backspace(&editor::actions::Backspace, window, cx)
+        });
+    });
+    cx.run_until_parked();
+    cx.update(|window, cx| {
+        let progress = session.progress(cx).unwrap();
+        assert!(!progress.complete);
+        assert!(!progress.invalid_context);
+        assert_eq!(progress.completed_changes, 0);
+        assert_eq!(session.text(cx).unwrap(), "hello");
+        scratch.update(cx, |editor, cx| {
+            assert_eq!(editor.display_text(cx), "hello\n");
+            let snapshot = editor.display_snapshot(cx);
+            let caret = editor.selections.newest_display(&snapshot).head();
+            assert_eq!((caret.row().0, caret.column()), (0, 5));
+            editor.newline(&editor::actions::Newline, window, cx);
+        });
+    });
+    cx.run_until_parked();
+    cx.update(|_, cx| assert!(session.progress(cx).unwrap().complete));
+}
+
+#[gpui::test]
+async fn undo_and_redo_completed_changes_restore_ghost_text(cx: &mut TestAppContext) {
+    let mut cx = context(cx).await;
+    let session = cx
+        .cx
+        .cx
+        .cx
+        .update(|cx| ghost_text::open("History proof".into(), "old\nkeep\nbad\n".into(), cx))
+        .unwrap();
+    let scratch = cx.workspace.read_with(&cx.cx.cx, |workspace, cx| {
+        workspace.active_item_as::<Editor>(cx).unwrap()
+    });
+    cx.update(|window, cx| {
+        scratch.update(cx, |editor, cx| {
+            editor.buffer().update(cx, |buffer, cx| {
+                buffer.set_group_interval(std::time::Duration::from_millis(300), cx)
+            });
+        });
+        session
+            .start_guided_typing("new\nkeep\ngood\n".into(), cx)
+            .unwrap();
+        scratch.update(cx, |editor, cx| {
+            editor.handle_input("new\n", window, cx);
+            editor.finalize_last_transaction(cx);
+        });
+    });
+    cx.run_until_parked();
+    for (should_redo, completed, text, display) in [
+        (false, 0, "keep\n", "new\nkeep\n"),
+        (true, 1, "new\nkeep\n", "new\nkeep\ngood\n"),
+    ] {
+        cx.update(|window, cx| {
+            scratch.update(cx, |editor, cx| {
+                if should_redo {
+                    editor.redo(&editor::actions::Redo, window, cx);
+                } else {
+                    editor.undo(&editor::actions::Undo, window, cx);
+                }
+            });
+        });
+        cx.run_until_parked();
+        cx.update(|_, cx| {
+            let progress = session.progress(cx).unwrap();
+            assert!(!progress.invalid_context);
+            assert_eq!(progress.completed_changes, completed);
+            assert_eq!(session.text(cx).unwrap(), text);
+            scratch.update(cx, |editor, cx| {
+                assert_eq!(editor.display_text(cx), display)
+            });
+        });
+    }
+    cx.update(|window, cx| {
+        scratch.update(cx, |editor, cx| editor.handle_input("good\n", window, cx));
+    });
+    cx.run_until_parked();
+    cx.update(|_, cx| assert!(session.progress(cx).unwrap().complete));
+}
+
+#[gpui::test]
 async fn staged_and_unstaged_snapshots_are_separate_and_read_only(cx: &mut TestAppContext) {
     let mut cx = context(cx).await;
     cx.set_head_text("committed\n");

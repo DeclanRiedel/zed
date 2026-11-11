@@ -107,6 +107,56 @@ impl GuidedTyping {
     }
 
     pub fn update(&mut self, current: &str) -> Progress {
+        if current == self.target {
+            self.completed = self.edits.len();
+            self.shift = self.target.len() as isize - self.initial_text.len() as isize;
+            self.baseline.clone_from(&self.target);
+            return Progress {
+                completed_changes: self.completed as u32,
+                total_changes: self.edits.len() as u32,
+                complete: true,
+                ghost_offset: current.len(),
+                cursor_offset: current.len(),
+                ..Progress::default()
+            };
+        }
+
+        let progress = self.update_current_change(current);
+        if !progress.invalid_context || self.completed == 0 {
+            return progress;
+        }
+
+        // Undo can cross completed changes, whose text was folded into the
+        // baseline. Try earlier steps without losing our place if the user
+        // actually changed unchanged context instead.
+        let completed = self.completed;
+        let shift = self.shift;
+        let baseline = self.baseline.clone();
+        for candidate in (0..completed).rev() {
+            while self.completed > candidate {
+                let Some(edit) = self.edits.get(self.completed - 1) else {
+                    break;
+                };
+                self.shift -= edit.text.len() as isize - edit.range.len() as isize;
+                let start = edit.range.start.saturating_add_signed(self.shift);
+                self.baseline.replace_range(
+                    start..start + edit.text.len(),
+                    &self.initial_text[edit.range.clone()],
+                );
+                self.completed -= 1;
+            }
+            let candidate_progress = self.update_current_change(current);
+            if !candidate_progress.invalid_context {
+                return candidate_progress;
+            }
+        }
+        self.completed = completed;
+        self.shift = shift;
+        self.baseline = baseline;
+        progress
+    }
+
+    fn update_current_change(&mut self, current: &str) -> Progress {
         let mut progress = Progress {
             completed_changes: self.completed as u32,
             total_changes: self.edits.len() as u32,
@@ -218,8 +268,51 @@ mod tests {
         assert!(session.update("oops\n").invalid_context);
         assert!(!session.update("keep\nn").invalid_context);
         assert!(session.update("keep\nnew\n").complete);
-        assert!(session.update("keep\nold\n").invalid_context);
+        assert!(session.update("oops\nnew\n").invalid_context);
         assert!(session.update("keep\nnew\n").complete);
+    }
+
+    #[test]
+    fn backspace_after_completion_restores_the_remaining_prompt() {
+        let mut session = GuidedTyping::new("old\n".into(), "new\n".into());
+        assert!(session.update("new\n").complete);
+        let progress = session.update("new");
+        assert!(!progress.invalid_context);
+        assert_eq!(progress.completed_changes, 0);
+        assert_eq!(progress.ghost_text, "\n");
+        assert_eq!(progress.cursor_offset, 3);
+        assert!(session.update("new\n").complete);
+    }
+
+    #[test]
+    fn undo_and_redo_completed_changes_restore_progress() {
+        let mut session = GuidedTyping::new("old\nkeep\nbad\n".into(), "new\nkeep\ngood\n".into());
+        let progress = session.update("new\nkeep\n");
+        assert_eq!(progress.completed_changes, 1);
+        assert_eq!(progress.ghost_text, "good\n");
+        let progress = session.update("keep\n");
+        assert!(!progress.invalid_context);
+        assert_eq!(progress.completed_changes, 0);
+        assert_eq!(progress.ghost_text, "new\n");
+        let progress = session.update("new\nkeep\n");
+        assert_eq!(progress.completed_changes, 1);
+        assert!(session.update("new\nkeep\ngood\n").complete);
+        let progress = session.update("keep\n");
+        assert!(!progress.invalid_context);
+        assert_eq!(progress.completed_changes, 0);
+        assert!(session.update("new\nkeep\ngood\n").complete);
+    }
+
+    #[test]
+    fn undo_deletion_restores_delete_guidance() {
+        let mut session = GuidedTyping::new("remove\nkeep\n".into(), "keep\n".into());
+        assert!(session.update("keep\n").complete);
+        let progress = session.update("remove\nkeep\n");
+        assert!(!progress.invalid_context);
+        assert!(progress.delete_only);
+        assert_eq!(progress.remove_characters, 7);
+        assert_eq!(progress.cursor_offset, 0);
+        assert!(session.update("keep\n").complete);
     }
 
     #[test]
@@ -245,11 +338,20 @@ mod tests {
     fn retype(before: &str, target: &str) {
         let mut session = GuidedTyping::new(before.into(), target.into());
         let mut current = session.initial_text().to_owned();
+        let mut history = Vec::new();
         for _ in 0..1000 {
             let progress = session.update(&current);
             assert!(!progress.invalid_context, "{current:?} -> {target:?}");
+            history.push(current.clone());
             if progress.complete {
                 assert_eq!(current, target);
+                for text in history.iter().rev().chain(history.iter()) {
+                    assert!(
+                        !session.update(text).invalid_context,
+                        "undo/redo {text:?}: {before:?} -> {target:?}"
+                    );
+                }
+                assert!(session.update(target).complete);
                 return;
             }
             if progress.remove_characters > 0 {

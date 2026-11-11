@@ -195,6 +195,8 @@ impl GhostTextSession for Session {
             if editor.text(cx) != model.initial_text() {
                 buffer.update(cx, |buffer, cx| buffer.set_text(model.initial_text(), cx));
             }
+            // Keep prompt preparation out of the user's first typing undo group.
+            editor.finalize_last_transaction(cx);
             editor.guided_typing = Some(GuidedSession {
                 model,
                 progress: Progress::default(),
