@@ -521,6 +521,27 @@ async fn undo_and_redo_completed_changes_restore_ghost_text(cx: &mut TestAppCont
 }
 
 #[gpui::test]
+async fn normal_editor_keeps_autoindent_when_ghost_text_is_opened(cx: &mut TestAppContext) {
+    let mut cx = context(cx).await;
+    cx.set_state("    oneˇ");
+    let original = cx.cx.editor.clone();
+    let session = cx
+        .cx
+        .cx
+        .cx
+        .update(|cx| ghost_text::open("Isolation proof".into(), String::new(), cx))
+        .unwrap();
+    cx.update(|window, cx| {
+        session.start_guided_typing("test\n".into(), cx).unwrap();
+        original.update(cx, |editor, cx| {
+            editor.newline(&editor::actions::Newline, window, cx)
+        });
+    });
+    cx.run_until_parked();
+    cx.assert_editor_state("    one\n    ˇ");
+}
+
+#[gpui::test]
 async fn staged_additions_and_deletions_have_empty_missing_sides(cx: &mut TestAppContext) {
     let mut cx = context(cx).await;
     let (fs, root, worktree) = cx.update_editor(|editor, _, cx| {
