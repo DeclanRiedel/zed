@@ -3,6 +3,7 @@ use extension::{
     ghost_text,
     git_diff::{self, GitDiffKind},
 };
+use fs::Fs as _;
 use gpui::TestAppContext;
 use language::{Language, LanguageConfig, LanguageMatcher};
 use multi_buffer::ToOffset as _;
@@ -517,6 +518,50 @@ async fn undo_and_redo_completed_changes_restore_ghost_text(cx: &mut TestAppCont
     });
     cx.run_until_parked();
     cx.update(|_, cx| assert!(session.progress(cx).unwrap().complete));
+}
+
+#[gpui::test]
+async fn staged_additions_and_deletions_have_empty_missing_sides(cx: &mut TestAppContext) {
+    let mut cx = context(cx).await;
+    let (fs, root, worktree) = cx.update_editor(|editor, _, cx| {
+        let project = editor.project().unwrap().read(cx);
+        let worktree = project.visible_worktrees(cx).next().unwrap().read(cx);
+        (
+            project.fs().as_fake(),
+            worktree.abs_path().to_path_buf(),
+            worktree.id().to_proto(),
+        )
+    });
+    fs.set_head_for_repo(
+        &root.join(".git"),
+        &[("deleted.practice", "removed\n".to_owned())],
+        "deadbeef",
+    );
+    fs.set_index_for_repo(
+        &root.join(".git"),
+        &[("added.practice", "added\n".to_owned())],
+    );
+    cx.run_until_parked();
+    for (path, before, after) in [
+        ("added.practice", "", "added\n"),
+        ("deleted.practice", "removed\n", ""),
+    ] {
+        let snapshot = cx
+            .update(|_, cx| git_diff::read(worktree, path.into(), GitDiffKind::Staged, cx))
+            .await
+            .unwrap();
+        assert_eq!(snapshot.before_text, before);
+        assert_eq!(snapshot.after_text, after);
+        assert!(!fs.is_file(&root.join(path)).await);
+    }
+    fs.with_git_state(&root.join(".git"), false, |state| {
+        assert_eq!(state.index_contents.len(), 1);
+        assert_eq!(
+            state.index_contents.values().next().unwrap().as_slice(),
+            b"added\n"
+        );
+    })
+    .unwrap();
 }
 
 #[gpui::test]
