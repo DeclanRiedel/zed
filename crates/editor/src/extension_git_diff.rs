@@ -21,10 +21,13 @@ fn read(
         anyhow::ensure!(
             !path.is_empty()
                 && !path.contains('\\')
+                && !path
+                    .bytes()
+                    .any(|byte| matches!(byte, b'\0' | b'\n' | b'\r'))
                 && Path::new(&path)
                     .components()
                     .all(|component| matches!(component, Component::Normal(_))),
-            "expected a worktree-relative file path without traversal"
+            "expected a worktree-relative file path without traversal or line breaks"
         );
         let path = RelPath::new(Path::new(&path), PathStyle::Unix)?;
         let worktree_id = WorktreeId::from_proto(worktree_id);
@@ -58,25 +61,28 @@ fn read(
     };
     cx.spawn(async move |cx| {
         let buffer = buffer.await?;
-        let diff = match kind {
+        let (before_text, mut after_text) = match kind {
             GitDiffKind::Staged => {
-                let (diff, _) = git_store
-                    .update(cx, |git_store, cx| git_store.open_staged_diff(buffer, cx))
+                let (before_text, after_text) = git_store
+                    .update(cx, |git_store, cx| git_store.read_staged_texts(buffer, cx))
                     .await?;
-                diff
+                (before_text, after_text.unwrap_or_default())
             }
             GitDiffKind::Unstaged => {
-                git_store
-                    .update(cx, |git_store, cx| git_store.open_unstaged_diff(buffer, cx))
-                    .await?
+                let (before_text, after_text) = git_store
+                    .update(cx, |git_store, cx| {
+                        git_store.read_unstaged_texts(buffer, cx)
+                    })
+                    .await?;
+                (before_text, after_text)
             }
         };
-        Ok(diff.read_with(cx, |diff, cx| {
-            let snapshot = diff.snapshot(cx);
-            GitFileDiff {
-                before_text: snapshot.base_text_string().unwrap_or_default(),
-                after_text: snapshot.buffer_snapshot().text(),
-            }
-        }))
+        let mut before_text = before_text.unwrap_or_default();
+        text::LineEnding::normalize(&mut before_text);
+        text::LineEnding::normalize(&mut after_text);
+        Ok(GitFileDiff {
+            before_text,
+            after_text,
+        })
     })
 }

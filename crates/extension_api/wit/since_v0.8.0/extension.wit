@@ -83,6 +83,7 @@ world extension {
     resource ghost-text-session {
         /// Clears replacement rows in the scratch text for retyping, then guides
         /// changes to target one region at a time. Never edits project files.
+        /// Target line endings are normalized to the editor's LF format.
         /// Undo and redo reopen completed regions. Changes to unchanged context
         /// pause guidance until that context is restored.
         start-guided-typing: func(target: string) -> result<guided-typing-progress, string>;
@@ -112,6 +113,8 @@ world extension {
         /// Reads immutable snapshots for one worktree-relative file.
         /// Staged: HEAD -> index. Unstaged: index -> current editor buffer,
         /// including unsaved edits. Missing sides are empty text.
+        /// Returns UTF-8 text with LF line endings. Paths cannot contain NUL or line breaks.
+        /// Requires a local project; binary data and working-tree symlinks return errors.
         read-git-diff: func(path: string, kind: git-diff-kind) -> result<git-file-diff, string>;
         /// Returns the path to the given binary name, if one is present on the `$PATH`.
         which: func(binary-name: string) -> option<string>;

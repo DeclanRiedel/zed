@@ -1361,6 +1361,66 @@ impl GitStore {
         cx.background_spawn(async move { task.await.map_err(|e| anyhow!("{e}")) })
     }
 
+    fn text_snapshot_source(
+        &self,
+        buffer: &Entity<Buffer>,
+        cx: &App,
+    ) -> Result<(Entity<Repository>, RepoPath, BufferId)> {
+        anyhow::ensure!(
+            matches!(self.state, GitStoreState::Local { .. }),
+            "Git text snapshots currently require a local project"
+        );
+        anyhow::ensure!(
+            !Self::buffer_is_symlink(buffer, cx),
+            "Git text snapshots do not support symbolic links"
+        );
+        let buffer_id = buffer.read(cx).remote_id();
+        let (repository, path) = self
+            .repository_and_path_for_buffer_id(buffer_id, cx)
+            .context("file is not in a Git repository")?;
+        Ok((repository, path, buffer_id))
+    }
+
+    /// Reads fresh HEAD and index text, preserving load and decoding errors.
+    pub fn read_staged_texts(
+        &self,
+        buffer: Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<(Option<String>, Option<String>)>> {
+        let (repository, path, buffer_id) = match self.text_snapshot_source(&buffer, cx) {
+            Ok(source) => source,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let text = repository.update(cx, |repository, cx| {
+            repository.load_committed_text(buffer_id, path, cx)
+        });
+        cx.spawn(async move |_, _| match text.await? {
+            DiffBasesChange::SetBoth(text) => Ok((text.clone(), text)),
+            DiffBasesChange::SetEach { head, index } => Ok((head, index)),
+            _ => anyhow::bail!("repository did not provide both HEAD and index text"),
+        })
+    }
+
+    /// Reads fresh index text and the current buffer without opening a diff view.
+    pub fn read_unstaged_texts(
+        &self,
+        buffer: Entity<Buffer>,
+        cx: &mut Context<Self>,
+    ) -> Task<Result<(Option<String>, String)>> {
+        let (repository, path, _) = match self.text_snapshot_source(&buffer, cx) {
+            Ok(source) => source,
+            Err(error) => return Task::ready(Err(error)),
+        };
+        let text = repository.update(cx, |repository, cx| {
+            repository.load_index_text_for_snapshot(path, cx)
+        });
+        cx.spawn(async move |_, cx| {
+            let index = text.await?;
+            let working = buffer.read_with(cx, |buffer, _| buffer.text());
+            Ok((index, working))
+        })
+    }
+
     /// Opens the staged (HEAD-vs-index) diff for the given buffer, along with
     /// the index text buffer that is the diff's main buffer.
     pub fn open_staged_diff(
@@ -10298,6 +10358,31 @@ impl Repository {
         });
 
         (job_tx, worker_task)
+    }
+
+    fn load_index_text_for_snapshot(
+        &mut self,
+        path: RepoPath,
+        cx: &App,
+    ) -> Task<Result<Option<String>>> {
+        let receiver = self.send_job(
+            "load_index_text_for_snapshot",
+            None,
+            move |state, _| async move {
+                let RepositoryState::Local(LocalRepositoryState { backend, .. }) = state else {
+                    anyhow::bail!("Git text snapshots currently require a local project");
+                };
+                let mut contents = backend
+                    .load_revisions(vec![format!(":{}", path.as_unix_str())])
+                    .await?;
+                anyhow::ensure!(
+                    contents.len() == 1,
+                    "repository returned an invalid snapshot count"
+                );
+                contents.pop().flatten().map(decode_git_text).transpose()
+            },
+        );
+        cx.spawn(|_: &mut AsyncApp| async move { receiver.await? })
     }
 
     fn load_staged_text(

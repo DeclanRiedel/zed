@@ -199,7 +199,8 @@ impl Editor {
 }
 
 impl GhostTextSession for Session {
-    fn start_guided_typing(&self, target: String, cx: &mut App) -> Result<Progress> {
+    fn start_guided_typing(&self, mut target: String, cx: &mut App) -> Result<Progress> {
+        text::LineEnding::normalize(&mut target);
         self.editor.update(cx, |editor, cx| {
             let buffer = scratch_buffer(editor, cx)?;
             editor.cancel_guided_typing(cx);
