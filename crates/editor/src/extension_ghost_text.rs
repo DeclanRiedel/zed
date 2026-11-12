@@ -127,6 +127,12 @@ impl Editor {
                 progress.total_changes,
                 progress.remove_characters
             )
+        } else if progress.ghost_text.starts_with('\n') {
+            format!(
+                "Change {}/{} · press Enter",
+                progress.completed_changes + 1,
+                progress.total_changes
+            )
         } else {
             format!(
                 "Change {}/{} · type ghost text",

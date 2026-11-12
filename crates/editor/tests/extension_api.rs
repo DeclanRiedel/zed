@@ -329,6 +329,11 @@ async fn enter_keeps_indented_prompt_at_column_one(cx: &mut TestAppContext) {
             scratch.update(cx, |editor, cx| editor.handle_input(line, window, cx))
         });
         cx.run_until_parked();
+        cx.update(|_, cx| {
+            scratch.update(cx, |editor, cx| {
+                assert!(editor.buffer().read(cx).title(cx).ends_with("press Enter"));
+            });
+        });
         cx.update(|window, cx| {
             scratch.update(cx, |editor, cx| {
                 editor.newline(&editor::actions::Newline, window, cx)
