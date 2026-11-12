@@ -855,6 +855,13 @@ impl InlayMap {
 }
 
 impl InlaySnapshot {
+    pub(crate) fn has_extension_ghost_text(&self) -> bool {
+        self.transforms.iter().any(|transform| {
+            matches!(transform, Transform::Inlay(inlay)
+                if matches!(inlay.id, InlayId::ExtensionGhostText(_)) && !inlay.text().is_empty())
+        })
+    }
+
     #[ztracing::instrument(skip_all)]
     pub fn to_point(&self, offset: InlayOffset) -> InlayPoint {
         let (start, _, item) = self.transforms.find::<Dimensions<

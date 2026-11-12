@@ -3192,8 +3192,8 @@ impl EditorElement {
             return Vec::new();
         }
 
-        // Empty buffers can still have visible text supplied by inlays.
-        if snapshot.is_empty() && snapshot.inlay_snapshot().len().0 == MultiBufferOffset(0) {
+        // Extension prompts must render even before the first real character is typed.
+        if snapshot.is_empty() && !snapshot.inlay_snapshot().has_extension_ghost_text() {
             let font_size = style.text.font_size.to_pixels(window.rem_size());
             let placeholder_color = cx.theme().colors().text_placeholder;
             let placeholder_text = snapshot.placeholder_text();
@@ -13133,6 +13133,65 @@ mod tests {
             state.active_rows.keys().cloned().collect::<Vec<_>>(),
             vec![DisplayRow(0), DisplayRow(3), DisplayRow(5)]
         );
+    }
+
+    #[gpui::test]
+    fn test_ghost_text_preserves_existing_empty_editor_placeholders(cx: &mut TestAppContext) {
+        init_test(cx, |_| {});
+        let window = cx.add_window(|window, cx| {
+            let buffer = MultiBuffer::build_simple("", cx);
+            Editor::new(EditorMode::full(), buffer, None, window, cx)
+        });
+        let cx = &mut VisualTestContext::from_window(*window, cx);
+        let editor = window.root(cx).unwrap();
+        let style = cx.update(|_, cx| editor.update(cx, |editor, cx| editor.style(cx).clone()));
+        let prediction_id = project::InlayId::EditPrediction(17);
+        let ghost_id = project::InlayId::ExtensionGhostText(0);
+        for (inlay_id, expected) in [
+            (None, "placeholder"),
+            (Some(prediction_id), "placeholder"),
+            (Some(ghost_id), "ghost"),
+            (None, "placeholder"),
+        ] {
+            window
+                .update(cx, |editor, window, cx| {
+                    editor.set_placeholder_text("placeholder", window, cx);
+                    let inlays = inlay_id
+                        .map(|inlay_id| {
+                            let position = editor
+                                .buffer
+                                .read(cx)
+                                .snapshot(cx)
+                                .anchor_after(MultiBufferOffset(0));
+                            let mut inlay = Inlay::edit_prediction(17, position, "ghost");
+                            inlay.id = inlay_id;
+                            inlay
+                        })
+                        .into_iter()
+                        .collect();
+                    editor.splice_inlays(&[prediction_id, ghost_id], inlays, cx);
+                    window.blur(cx);
+                })
+                .unwrap();
+            let (_, state) = cx.draw(
+                point(px(500.), px(500.)),
+                size(px(500.), px(500.)),
+                |_, _| EditorElement::new(&editor, style.clone()),
+            );
+            let rendered: String = state
+                .position_map
+                .line_layouts
+                .first()
+                .unwrap()
+                .fragments
+                .iter()
+                .filter_map(|fragment| match fragment {
+                    LineFragment::Text(line) => Some(line.text.as_ref()),
+                    LineFragment::Element { .. } => None,
+                })
+                .collect();
+            assert_eq!(rendered, expected, "inlay {inlay_id:?}");
+        }
     }
 
     #[gpui::test]
