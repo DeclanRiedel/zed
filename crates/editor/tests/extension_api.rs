@@ -586,6 +586,47 @@ async fn staged_additions_and_deletions_have_empty_missing_sides(cx: &mut TestAp
 }
 
 #[gpui::test]
+async fn saved_scratch_stops_guidance_and_rejects_content_access(cx: &mut TestAppContext) {
+    let mut cx = context(cx).await;
+    cx.set_state("project textˇ\n");
+    let file = cx.update_buffer(|buffer, _| buffer.file().unwrap().clone());
+    let session = cx
+        .cx
+        .cx
+        .cx
+        .update(|cx| ghost_text::open("Ownership proof".into(), "old\n".into(), cx))
+        .unwrap();
+    let scratch = cx.workspace.read_with(&cx.cx.cx, |workspace, cx| {
+        workspace.active_item_as::<Editor>(cx).unwrap()
+    });
+    cx.update(|_, cx| {
+        session.start_guided_typing("new\n".into(), cx).unwrap();
+        let buffer = scratch.read(cx).buffer().read(cx).as_singleton().unwrap();
+        buffer.update(cx, |buffer, cx| {
+            buffer.set_text("saved contents\n", cx);
+            buffer.file_updated(file, cx);
+        });
+    });
+    cx.run_until_parked();
+    cx.update(|_, cx| {
+        assert!(
+            session
+                .start_guided_typing("replacement\n".into(), cx)
+                .is_err()
+        );
+        assert!(session.set(0, "overlay".into(), cx).is_err());
+        assert!(session.text(cx).is_err());
+        assert!(session.progress(cx).is_err());
+        scratch.update(cx, |editor, cx| {
+            assert_eq!(editor.text(cx), "saved contents\n");
+            assert_eq!(editor.display_text(cx), "saved contents\n");
+        });
+        session.clear(cx).unwrap();
+    });
+    cx.assert_editor_state("project textˇ\n");
+}
+
+#[gpui::test]
 async fn staged_and_unstaged_snapshots_are_separate_and_read_only(cx: &mut TestAppContext) {
     let mut cx = context(cx).await;
     cx.set_head_text("committed\n");

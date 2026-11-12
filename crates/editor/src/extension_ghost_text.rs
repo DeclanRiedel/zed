@@ -14,6 +14,19 @@ use crate::{Autoscroll, Editor, HighlightKey, Inlay, inlays::InlayContent};
 
 const GHOST_TEXT_ID: InlayId = InlayId::ExtensionGhostText(0);
 
+fn scratch_buffer(editor: &Editor, cx: &App) -> Result<Entity<Buffer>> {
+    let buffer = editor
+        .buffer
+        .read(cx)
+        .as_singleton()
+        .context("ghost text requires a scratch buffer")?;
+    anyhow::ensure!(
+        buffer.read(cx).file().is_none(),
+        "ghost text editor is no longer a scratch buffer"
+    );
+    Ok(buffer)
+}
+
 pub fn init(cx: &mut App) {
     cx.set_global(GhostTextHost(open));
 }
@@ -82,6 +95,11 @@ pub(super) struct GuidedSession {
 impl Editor {
     pub(super) fn refresh_guided_typing(&mut self, cx: &mut Context<Self>) {
         if self.guided_typing.is_none() {
+            return;
+        }
+        if scratch_buffer(self, cx).is_err() {
+            self.cancel_guided_typing(cx);
+            self.splice_inlays(&[GHOST_TEXT_ID], Vec::new(), cx);
             return;
         }
         let text = self.text(cx);
@@ -183,15 +201,11 @@ impl Editor {
 impl GhostTextSession for Session {
     fn start_guided_typing(&self, target: String, cx: &mut App) -> Result<Progress> {
         self.editor.update(cx, |editor, cx| {
+            let buffer = scratch_buffer(editor, cx)?;
             editor.cancel_guided_typing(cx);
             let before = editor.text(cx);
             let title = editor.buffer.read(cx).title(cx).to_string();
             let model = GuidedTyping::new(before, target);
-            let buffer = editor
-                .buffer
-                .read(cx)
-                .as_singleton()
-                .context("guided typing requires a scratch buffer")?;
             if editor.text(cx) != model.initial_text() {
                 buffer.update(cx, |buffer, cx| buffer.set_text(model.initial_text(), cx));
             }
@@ -237,6 +251,7 @@ impl GhostTextSession for Session {
 
     fn set(&self, offset: usize, text: String, cx: &mut App) -> Result<()> {
         self.editor.update(cx, |editor, cx| {
+            scratch_buffer(editor, cx)?;
             validate_offset(&editor.text(cx), offset)?;
             editor.cancel_guided_typing(cx);
             let position = editor
@@ -259,12 +274,12 @@ impl GhostTextSession for Session {
     }
 
     fn text(&self, cx: &App) -> Result<String> {
-        Ok(self
+        let editor = self
             .editor
             .upgrade()
-            .context("ghost text editor was closed")?
-            .read(cx)
-            .text(cx))
+            .context("ghost text editor was closed")?;
+        scratch_buffer(editor.read(cx), cx)?;
+        Ok(editor.read(cx).text(cx))
     }
 
     fn clear(&self, cx: &mut App) -> Result<()> {

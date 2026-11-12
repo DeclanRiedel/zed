@@ -68,7 +68,8 @@ world extension {
     /// Updates the installation status for the given language server.
     import set-language-server-installation-status: func(language-server-name: string, status: language-server-installation-status);
 
-    /// Opens an extension-owned scratch editor. Never edits a project file.
+    /// Opens an extension-owned scratch editor in the active workspace.
+    /// Content access stops if the editor is saved as a file. Never edits a project file.
     import open-ghost-text: func(title: string, text: string) -> result<ghost-text-session, string>;
 
     record guided-typing-progress {
