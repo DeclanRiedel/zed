@@ -587,13 +587,10 @@ impl HostGhostTextSession for WasmState {
     ) -> wasmtime::Result<Result<GuidedTypingProgress, String>> {
         let session = self.table.get(&session)?.clone();
         Ok(self
-            .on_main_thread(move |cx| {
-                async move {
-                    cx.update(|cx| session.start_guided_typing(target, cx))
-                        .map(Into::into)
-                        .map_err(|error| error.to_string())
-                }
-                .boxed_local()
+            .on_main_thread(async move |cx| {
+                cx.update(|cx| session.start_guided_typing(target, cx))
+                    .map(Into::into)
+                    .map_err(|error| error.to_string())
             })
             .await)
     }
@@ -604,13 +601,10 @@ impl HostGhostTextSession for WasmState {
     ) -> wasmtime::Result<Result<GuidedTypingProgress, String>> {
         let session = self.table.get(&session)?.clone();
         Ok(self
-            .on_main_thread(move |cx| {
-                async move {
-                    cx.update(|cx| session.progress(cx))
-                        .map(Into::into)
-                        .map_err(|error| error.to_string())
-                }
-                .boxed_local()
+            .on_main_thread(async move |cx| {
+                cx.update(|cx| session.progress(cx))
+                    .map(Into::into)
+                    .map_err(|error| error.to_string())
             })
             .await)
     }
@@ -623,12 +617,9 @@ impl HostGhostTextSession for WasmState {
     ) -> wasmtime::Result<Result<(), String>> {
         let session = self.table.get(&session)?.clone();
         Ok(self
-            .on_main_thread(move |cx| {
-                async move {
-                    cx.update(|cx| session.set(offset as usize, text, cx))
-                        .map_err(|error| error.to_string())
-                }
-                .boxed_local()
+            .on_main_thread(async move |cx| {
+                cx.update(|cx| session.set(offset as usize, text, cx))
+                    .map_err(|error| error.to_string())
             })
             .await)
     }
@@ -639,12 +630,9 @@ impl HostGhostTextSession for WasmState {
     ) -> wasmtime::Result<Result<String, String>> {
         let session = self.table.get(&session)?.clone();
         Ok(self
-            .on_main_thread(move |cx| {
-                async move {
-                    cx.update(|cx| session.text(cx))
-                        .map_err(|error| error.to_string())
-                }
-                .boxed_local()
+            .on_main_thread(async move |cx| {
+                cx.update(|cx| session.text(cx))
+                    .map_err(|error| error.to_string())
             })
             .await)
     }
@@ -655,28 +643,22 @@ impl HostGhostTextSession for WasmState {
     ) -> wasmtime::Result<Result<(), String>> {
         let session = self.table.get(&session)?.clone();
         Ok(self
-            .on_main_thread(move |cx| {
-                async move {
-                    cx.update(|cx| session.clear(cx))
-                        .map_err(|error| error.to_string())
-                }
-                .boxed_local()
+            .on_main_thread(async move |cx| {
+                cx.update(|cx| session.clear(cx))
+                    .map_err(|error| error.to_string())
             })
             .await)
     }
 
     async fn drop(&mut self, session: Resource<ExtensionGhostTextSession>) -> wasmtime::Result<()> {
         let session = self.table.delete(session)?;
-        self.on_main_thread(move |cx| {
-            async move {
-                cx.update(|cx| {
-                    // Closing a scratch tab before dropping its resource is normal.
-                    if let Err(error) = session.clear(cx) {
-                        log::debug!("clearing closed ghost text session: {error}");
-                    }
-                });
-            }
-            .boxed_local()
+        self.on_main_thread(async move |cx| {
+            cx.update(|cx| {
+                // Closing a scratch tab before dropping its resource is normal.
+                if let Err(error) = session.clear(cx) {
+                    log::debug!("clearing closed ghost text session: {error}");
+                }
+            });
         })
         .await;
         Ok(())
@@ -696,18 +678,15 @@ impl HostWorktree for WasmState {
             GitDiffKind::Unstaged => extension::git_diff::GitDiffKind::Unstaged,
         };
         Ok(self
-            .on_main_thread(move |cx| {
-                async move {
-                    let diff = cx
-                        .update(|cx| extension::git_diff::read(worktree_id, path, kind, cx))
-                        .await;
-                    diff.map(|diff| GitFileDiff {
-                        before_text: diff.before_text,
-                        after_text: diff.after_text,
-                    })
-                    .map_err(|error| error.to_string())
-                }
-                .boxed_local()
+            .on_main_thread(async move |cx| {
+                let diff = cx
+                    .update(|cx| extension::git_diff::read(worktree_id, path, kind, cx))
+                    .await;
+                diff.map(|diff| GitFileDiff {
+                    before_text: diff.before_text,
+                    after_text: diff.after_text,
+                })
+                .map_err(|error| error.to_string())
             })
             .await)
     }
@@ -1090,12 +1069,9 @@ impl ExtensionImports for WasmState {
         text: String,
     ) -> wasmtime::Result<Result<Resource<ExtensionGhostTextSession>, String>> {
         let session = self
-            .on_main_thread(move |cx| {
-                async move {
-                    cx.update(|cx| extension::ghost_text::open(title, text, cx))
-                        .map_err(|error| error.to_string())
-                }
-                .boxed_local()
+            .on_main_thread(async move |cx| {
+                cx.update(|cx| extension::ghost_text::open(title, text, cx))
+                    .map_err(|error| error.to_string())
             })
             .await;
         match session {
